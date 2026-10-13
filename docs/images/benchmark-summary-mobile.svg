@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="252" viewBox="0 0 480 252" role="img" aria-labelledby="title">
+<title id="title">Cost and latency comparisons across eight configurations on one task</title>
+<rect x=".5" y=".5" width="479" height="251" rx="10" fill="#f7f8ff" stroke="#e4e8f6"/>
+<g font-family="Arial,Helvetica,sans-serif" transform="translate(20 0)">
+<text y="29" font-size="16" fill="#62626c">Cost</text><text y="70" font-size="32" font-weight="700" fill="#285aff">99.8% <tspan font-size="22">lower</tspan></text><text y="100" font-size="16" fill="#62626c">From <tspan font-weight="600" fill="#17171a">223</tspan> to <tspan font-weight="600" fill="#17171a">0.47 credits</tspan></text>
+<path d="M0 124H440" stroke="#e4e8f6"/>
+<text y="154" font-size="16" fill="#62626c">End-to-end latency</text><text y="195" font-size="32" font-weight="700" fill="#285aff">3.2× <tspan font-size="22">faster</tspan></text><text y="225" font-size="16" fill="#62626c">From <tspan font-weight="600" fill="#17171a">4m 36s</tspan> to <tspan font-weight="600" fill="#17171a">1m 25s</tspan></text>
+</g></svg>

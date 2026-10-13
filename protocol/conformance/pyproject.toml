@@ -1,0 +1,29 @@
+[project]
+name = "uhp-conformance"
+dynamic = ["version"]
+description = "Conformance suite for the Unified Harness Protocol (UHP)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["jsonschema>=4.0"]
+
+[project.optional-dependencies]
+fixture = ["mcp>=1.10,<2"]
+
+[project.scripts]
+uhp-conformance = "uhp_conformance.cli:main"
+uhp-conformance-fixture = "uhp_conformance.fixture:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["uhp_conformance"]
+
+# The version is the package's own `__version__`, the string a report prints. One place to change.
+[tool.setuptools.dynamic]
+version = { attr = "uhp_conformance.__version__" }
+
+[tool.setuptools.package-data]
+uhp_conformance = ["uhp-*.schema.json"]

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="64" viewBox="0 0 480 64" role="img" aria-labelledby="title">
+<title id="title">Help grow the HarnessRouter community. Star this repo.</title>
+<rect width="480" height="64" rx="6" fill="#effbf1"/>
+<g font-family="Arial,Helvetica,sans-serif" text-anchor="middle">
+<text x="240" y="24" font-size="16" fill="#1f2328">Help grow the HarnessRouter community.</text>
+<text x="240" y="49" font-size="18" font-weight="700" fill="#0969da"><tspan fill="#e3b341">★ </tspan>Star this repo →</text>
+</g></svg>

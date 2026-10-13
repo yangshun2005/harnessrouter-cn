@@ -1,0 +1,228 @@
+# Harness
+
+**统一 Harness 协议，版本 `2026-09-12`**
+
+客户端在派发任务前，需要知道哪些 Harness 能执行任务、能用哪些模型。本章定义发现机制、harness 对象，以及在一致性等级 **Full** 下如何创建和修改 harness。
+
+## 1. 发现 harness
+
+```http
+GET /v1/harnesses
+```
+
+```json
+{
+  "harnesses": [
+    {
+      "id": "chrn_08dae611630d467ab3e67ed792570ae5",
+      "object": "harness",
+      "name": "Research agent",
+      "base": "claude-code",
+      "baseLabel": "Claude Code",
+      "defaultModel": "claude-sonnet-4.6",
+      "systemPrompt": "",
+      "mcpServers": [],
+      "skills": [],
+      "plugins": [],
+      "disabledTools": [],
+      "maxStep": null,
+      "timeoutSeconds": null,
+      "createdAt": 1786403298205
+    }
+  ]
+}
+```
+
+服务端 MUST 只返回调用方作用域内的 harness。列表 MAY 为空——未配置任何 harness 的服务端是合法的，客户端 MUST 处理这种情况，不能假定索引 `0` 一定存在。
+
+```http
+GET /v1/harnesses/{harness_id}
+```
+
+返回单个 harness 对象，或返回 `404`，`code: "harness_not_found"`。
+
+## 2. harness 对象
+
+| 字段 | 类型 | 必填 | 含义 |
+|---|---|---|---|
+| `id` | string | 是 | 以 `chrn_` 为前缀 |
+| `object` | string | 是 | 固定为 `harness` |
+| `name` | string | 是 | 人类可读的标签，不是标识符 |
+| `base` | string | 是 | harness 运行时类型：`codex`、`claude-code`、`hermes` 等 |
+| `baseLabel` | string | 否 | `base` 的显示名称 |
+| `defaultModel` | string | 否 | 任务未指定 `model` 时使用的模型 |
+| `systemPrompt` | string | 否 | 附加的常驻指令 |
+| `mcpServers` | array | 否 | 挂载到该 harness 的 MCP 服务器 |
+| `skills` | array | 否 | 该 harness 可用的 Skill |
+| `plugins` | array | 否 | 已安装的插件，每个插件是一组工具和 Skill 的包；见 [Plugins](plugins.md) |
+| `disabledTools` | string[] | 否 | 对 agent 屏蔽的工具 |
+| `maxStep` | integer \| null | 否 | 默认步数预算 |
+| `timeoutSeconds` | integer \| null | 否 | 默认墙钟时间预算 |
+| `createdAt` | integer | 是 | Unix 毫秒时间戳 |
+
+本规范不枚举 `base` 的取值。服务端 MAY 支持本文档从未听说过的 base，客户端 MUST 把 `base` 当作不透明字符串——否则每发布一个 harness 就得修订协议，而这正是 UHP 要消除的耦合。
+
+## 3. 模型
+
+```http
+GET /v1/models
+```
+
+```json
+{
+  "backends": {
+    "claude": {
+      "default": "claude-sonnet-4.6",
+      "models": [
+        { "id": "claude-sonnet-4.6", "label": "claude-sonnet-4.6", "backend": "claude",
+          "available": true, "default": true }
+      ]
+    }
+  }
+}
+```
+
+```http
+GET /v1/harnesses/{harness_id}/models
+```
+
+```json
+{
+  "harness_id": "chrn_…",
+  "backend": "claude",
+  "default": "claude-sonnet-4.6",
+  "fallback": "claude-sonnet-4.6",
+  "models": [ { "id": "claude-opus-5", "available": true, "default": false } ]
+}
+```
+
+### 3.1 `available` 是一种承诺
+
+`available: true` 表示服务端**此刻**就能为该 harness 提供该模型——凭据存在，且提供商可达。`available: false` 表示对该模型的请求不会按预期执行。
+
+服务端 MUST 计算 `available`，而不是直接断言。把模型列为可用、随后任务失败，对客户端来说是最糟的结果：它向用户展示了一个选项，用户选了它，然后在用户已经投入之后任务失败。
+
+客户端 SHOULD 将不可用的模型显示为禁用，而不是隐藏，这样用户能看到某个模型存在但未配置，而不是疑惑它为什么不见了。
+
+## 4. 工具与 Skill
+
+配置好的 harness 携带三样东西，决定其 agent 能做什么。三者都是 harness 对象的一部分，设置方式与 harness 本身相同。
+
+### 4.1 MCP 服务器
+
+```json
+{ "mcpServers": [
+    { "name": "vault", "url": "https://mcp.example.com/mcp", "transport": "http", "enabled": true }
+] }
+```
+
+| 字段 | 必填 | 含义 |
+|---|---|---|
+| `name` | 是 | 向 agent 标识该服务器；会被清理为 CLI 安全的标识符 |
+| `url` | 是 | 端点 |
+| `transport` | 否 | `http`（Streamable HTTP，默认）或 `sse` |
+| `enabled` | 否 | 缺省或 `true` 表示启用 |
+| `headers` | 否 | 额外的请求头 |
+| `auth` | 否 | Bearer token，或由服务端解析的服务端引用 |
+
+该列表只承载远程服务器，与上一版本完全一致。以进程方式运行的 MCP 服务器（`stdio`）在插件内声明，因为插件才为它提供运行根目录和保存状态的目录（[Plugins §2.2](plugins.md#22-what-the-server-derives)）。
+
+服务端 MUST 在一轮对话中只连接**已启用**的条目。已禁用的条目 MUST NOT 被联系——不能先连接再隐藏，那仍会把本轮对话的存在泄露给该端点的运营方。
+
+无法访问的 MCP 服务器 MUST NOT 导致任务失败。本轮对话 MUST 在没有这些工具的情况下继续，因为第三方端点宕机不是丢失用户工作的理由。服务端 SHOULD 在运行中让这种降级可见，而不是静默处理。
+
+> 服务端 MUST NOT 宣称自己无法兑现的 MCP 支持。如果其背后的 harness 运行时无法使用所配置的传输方式，那就是安装损坏；只在工作区内的日志文件里报告，对用户而言与模型拒绝使用该工具毫无区别。
+
+### 4.2 Skill
+
+Skill 是一个**文件夹**，不是单个文件：
+
+```json
+{ "skills": [
+    { "name": "vault-manual", "enabled": true, "files": [
+        { "path": "SKILL.md",            "content": "---\nname: vault-manual\n---\n…" },
+        { "path": "references/codes.md", "content": "…" },
+        { "path": "scripts/helper.sh",   "content": "#!/bin/sh\n…" },
+        { "path": "assets/logo.png",     "content_b64": "iVBORw0KGgo…" }
+    ]}
+] }
+```
+
+- `files[].path` 相对于 Skill 自身的文件夹，MUST 支持嵌套目录。服务端 MUST 拒绝逃逸出该文件夹的路径。
+- 文本放在 `content`，二进制放在 `content_b64`。服务端 MUST 逐字节保留两者。
+- 一个包 MUST 包含 `SKILL.md`；服务端 MUST 拒绝不含它的包，且应在配置时而非运行时拒绝。
+- 服务端 MUST 把**整个文件夹**物化到 agent 可读取的位置。只物化 `SKILL.md` 会破坏所有携带引用、脚本或数据的 Skill——也就是大多数非平凡的 Skill。
+- `enabled: false` 会屏蔽某个 Skill，包括从 base 继承来的 Skill。
+
+服务端 MAY 将大型包离线存储，且 MUST 通过以下接口返回完整文件列表：
+
+```http
+GET /v1/harnesses/{harness_id}/skills/{skill_id}/files
+```
+
+harness 经 `GET` 和 `PUT` 往返 MUST NOT 丢失 Skill 内容。这正是值得针对性设计的失败场景：一次无关的编辑——重命名 harness——悄悄清空了一个 Skill 文件夹，而用户直到几周后 agent 行为异常才会发现它不见了。
+
+### 4.3 禁用的工具
+
+```json
+{ "disabledTools": ["WebSearch"] }
+```
+
+名称来自 harness base 自身的工具目录。执行方式因运行时而异，服务端 MUST NOT 夸大其能力：
+
+- 运行时支持按工具限制时，服务端 MUST 以硬性阻断执行。
+- 不支持时，服务端 MUST 仍以常驻指令的形式把该限制传达给 agent，MUST NOT 静默丢弃。丢弃是最糟的结果：运营者以为某工具已关闭，实际并没有。
+
+需要保证阻断的客户端 SHOULD 确认 harness base 支持阻断，而不是假定 `disabledTools` 总是硬性的。
+
+### 4.4 插件
+
+```json
+{ "plugins": [ { "name": "contract-review", "enabled": true, "blob": "plg_…" } ] }
+```
+
+插件是一个 [Agent Plugins](https://agent-plugins.org/specification) 包：`plugin.json`、`mcp.json` 和 `skills/`，作为一个文件夹整体携带、整体安装。其服务器和 Skill 在每一轮对话中与 harness 自身的合并；harness 自身的 `mcpServers` 和 `skills` 只报告写入其中的内容，绝不吸收插件的。对象、组合规则、将 harness 导出为包，以及托管服务端对运行中插件的义务，见 [Plugins 章节](plugins.md)。该能力为 `plugins`；不具备它的服务端在所有等级下都合规。
+
+## 5. 管理 harness
+
+仅限一致性等级 **Full**。客户端 MUST 先检查 `harness_management` 能力。
+
+### 5.1 创建
+
+```http
+POST /v1/harnesses
+```
+
+```json
+{ "name": "Research agent", "base": "claude-code", "default_model": "claude-sonnet-4.6" }
+```
+
+返回创建出的 harness 对象。`base` 为必填，且 MUST 是服务端支持的取值；否则返回 `422`，`code: "unsupported_base"`。
+
+### 5.2 更新
+
+```http
+PUT /v1/harnesses/{harness_id}
+```
+
+替换可变配置。服务端 MUST NOT 更改 `id`、`base` 或 `createdAt`。更改现有 harness 的 base 会悄悄改变所有已挂载会话的行为；想要不同 base 的客户端 MUST 创建另一个 harness。
+
+### 5.3 删除
+
+```http
+DELETE /v1/harnesses/{harness_id}
+```
+
+服务端 MUST NOT 删除使用过该 harness 的会话或响应。配置变更后就消失的历史无法审计。
+
+## 6. 选择 harness
+
+非规范性内容，但每个客户端都会面对这个问题：
+
+| 如果任务是…… | 考虑 |
+|---|---|
+| 在仓库中编辑代码 | 编码专用 base（`codex`、`claude-code`） |
+| 长周期、多工具的工作 | 具有明确步数预算和强工具使用能力的 base |
+| 低成本、大批量分类 | 任意 base 上最小的模型 |
+
+UHP 的意义在于让这个选择保持可逆。支持 UHP 的产品只需改一次配置就能更换 base 或模型，也能用同一份输入对两个 harness 做 A/B 测试，而无需第二套集成。
